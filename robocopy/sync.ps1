@@ -1,41 +1,54 @@
 ﻿<#
 .SYNOPSIS
-    提供一個可使用方向鍵操作的選單介面，使用 Robocopy 同步預先設定好的多組目錄。
+    提供一個可使用方向鍵操作的選單介面，使用 Robocopy 從外部 JSON 設定檔同步目錄。
 
 .DESCRIPTION
-    這個 PowerShell 腳本透過讀取使用者按鍵，實現了可用方向鍵 (上/下) 選擇、Enter 鍵執行的互動式選單。
-    使用者可以預先設定多組來源與目標目錄，並在執行時透過光棒選單來選擇要同步的任務。
+    此腳本會讀取名為 sync_config.json 的外部設定檔來動態建立同步任務清單。
+    使用者可以透過光棒選單選擇要執行的任務。
 
 .NOTES
     作者: Gemini
     日期: 2025-12-19
-    版本: 3.0
+    版本: 4.0
 
 .WARNING
     腳本中的 /MIR 參數會刪除目標目錄中有，但來源目錄沒有的檔案與資料夾。
-    在執行前請再三確認 `$SyncTasks` 中的路徑設定正確，以避免重要資料遺失。
+    在執行前請再三確認 `sync_config.json` 中的路徑設定正確，以避免重要資料遺失。
 #>
 
 #----------------------------------------------------------------------
-# 1. 設定區：請在此處新增或修改您的同步路徑
+# 1. 讀取與驗證 JSON 設定檔
 #----------------------------------------------------------------------
-$SyncTasks = @(
-    [PSCustomObject]@{
-        Name        = "範例 1: 我的文件"
-        Source      = "C:\Users\YourUser\Documents"
-        Destination = "D:\Backup\Documents"
-    },
-    [PSCustomObject]@{
-        Name        = "範例 2: 專案檔案"
-        Source      = "C:\Projects"
-        Destination = "D:\Backup\Projects"
-    },
-    [PSCustomObject]@{
-        Name        = "範例 3: 照片"
-        Source      = "C:\Users\YourUser\Pictures"
-        Destination = "E:\Backup\Pictures"
-    }
-)
+$ConfigFilePath = Join-Path $PSScriptRoot "sync_config.json"
+$SyncTasks = $null
+
+# 檢查設定檔是否存在
+if (-not (Test-Path $ConfigFilePath)) {
+    Write-Host "[錯誤] 找不到設定檔: $ConfigFilePath" -ForegroundColor Red
+    Write-Host "請確認 'sync_config.json' 與腳本位於同一個目錄下。" -ForegroundColor Yellow
+    Read-Host "請按 Enter 鍵結束..."
+    exit
+}
+
+# 嘗試讀取並解析 JSON
+try {
+    $SyncTasks = Get-Content -Path $ConfigFilePath -Raw | ConvertFrom-Json
+}
+catch {
+    Write-Host "[錯誤] 無法解析設定檔 $ConfigFilePath。" -ForegroundColor Red
+    Write-Host "請檢查 JSON 格式是否正確 (例如：雙引號、逗號、反斜線是否正確)。" -ForegroundColor Yellow
+    Write-Host "錯誤訊息: $($_.Exception.Message)"
+    Read-Host "請按 Enter 鍵結束..."
+    exit
+}
+
+# 檢查解析後的任務是否為空
+if (-not $SyncTasks -or $SyncTasks.Count -eq 0) {
+    Write-Host "[警告] 設定檔為空，或不包含任何有效的同步任務。" -ForegroundColor Yellow
+    Read-Host "請按 Enter 鍵結束..."
+    exit
+}
+
 
 #----------------------------------------------------------------------
 # 2. Robocopy 執行函式 (與前一版相同)
@@ -93,12 +106,12 @@ $MenuItems = @($SyncTasks) +
 function Show-Menu {
     Clear-Host
     Write-Host "================ Robocopy 同步選單 ================" -ForegroundColor Yellow
+    Write-Host "設定檔: $ConfigFilePath" -ForegroundColor Gray
     Write-Host "使用 [↑] [↓] 方向鍵選擇，按下 [Enter] 執行，[Q] 退出。`n"
 
     for ($i = 0; $i -lt $MenuItems.Count; $i++) {
         $item = $MenuItems[$i]
         
-        # 根據是否為當前選中項來設定顯示顏色
         if ($i -eq $CurrentIndex) {
             $bgColor = [ConsoleColor]::White
             $fgColor = [ConsoleColor]::Black
@@ -138,7 +151,6 @@ do {
             }
             elseif ($selectedItem.Source -eq "ALL") {
                 Write-Host "`n[INFO] 即將執行所有同步任務...`n" -ForegroundColor Cyan
-                # 遍歷原始的 SyncTasks，排除 "ALL" 和 "QUIT"
                 foreach ($task in $SyncTasks) {
                     Start-RobocopySync -TaskName $task.Name -SourcePath $task.Source -DestinationPath $task.Destination
                 }

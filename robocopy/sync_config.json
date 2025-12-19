@@ -1,0 +1,17 @@
+[
+  {
+    "Name": "範例 1: 我的文件 (來自JSON)",
+    "Source": "C:\\Users\\YourUser\\Documents",
+    "Destination": "D:\\Backup\\Documents"
+  },
+  {
+    "Name": "範例 2: 專案檔案 (來自JSON)",
+    "Source": "C:\\Projects",
+    "Destination": "D:\\Backup\\Projects"
+  },
+  {
+    "Name": "範例 3: 照片 (來自JSON)",
+    "Source": "C:\\Users\\YourUser\\Pictures",
+    "Destination": "E:\\Backup\\Pictures"
+  }
+]
