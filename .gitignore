@@ -1,0 +1,11 @@
+# Python virtual environment
+venv/
+
+# Gemini Telemetry logs
+gemini_Telemetry_log/
+
+# Temporary files
+.gemini/
+
+# Ignore draw.io backup files
+*.bkp
