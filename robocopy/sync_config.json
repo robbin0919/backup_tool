@@ -5,6 +5,7 @@
       "Source": "C:\\Users\\YourUser\\Documents",
       "Destination": "D:\\Backup\\Documents",
       "robocopyOptions": {
+        "listOnly": true,
         "mirror": true,
         "copyDirectoryTimestamps": true,
         "retryCount": 3,
@@ -19,6 +20,7 @@
       "Source": "C:\\Projects",
       "Destination": "D:\\Backup\\Projects",
       "robocopyOptions": {
+        "listOnly": true,
         "mirror": true,
         "copyDirectoryTimestamps": true,
         "retryCount": 3,
@@ -33,6 +35,7 @@
       "Source": "C:\\Users\\YourUser\\Pictures",
       "Destination": "E:\\Backup\\Pictures",
       "robocopyOptions": {
+        "listOnly": true,
         "mirror": true,
         "copyDirectoryTimestamps": true,
         "retryCount": 10,

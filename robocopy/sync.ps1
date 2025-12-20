@@ -9,8 +9,8 @@
 
 .NOTES
     作者: Robbin Lee
-    日期: 2025-12-20
-    版本: 5.0
+    日期: 2025-12-21
+    版本: 9.1
 
 .WARNING
     腳本中的 /MIR 參數會刪除目標目錄中有，但來源目錄沒有的檔案與資料夾。
@@ -78,12 +78,21 @@ function Start-RobocopySync {
     $RobocopyArgs = @( $Task.Source, $Task.Destination )
     $LogFile = $null
 
+    # 安全性檢查：強制要求 listOnly 參數必須存在
+    if (-not ($TaskOptions.PSObject.Properties.Name -contains 'listOnly')) {
+        Write-Host "[錯誤] 任務 '$($Task.Name)' 未設定 'listOnly' 參數。" -ForegroundColor Red
+        Write-Host "       為防止意外操作，此為必填參數。" -ForegroundColor Red
+        Write-Host "       請在 'robocopyOptions' 中加入 '\"listOnly\": true' (測試模式) 或 '\"listOnly\": false' (實際執行)。`n" -ForegroundColor Red
+        return
+    }
+
     # 根據選項建構 Robocopy 參數 (硬編碼邏輯)
     if ($TaskOptions.PSObject.Properties.Name -contains 'mirror' -and $TaskOptions.mirror -eq $true) { $RobocopyArgs += "/MIR" }
     if ($TaskOptions.PSObject.Properties.Name -contains 'copyDirectoryTimestamps' -and $TaskOptions.copyDirectoryTimestamps -eq $true) { $RobocopyArgs += "/DCOPY:T" }
     if ($TaskOptions.PSObject.Properties.Name -contains 'retryCount') { $RobocopyArgs += "/R:$($TaskOptions.retryCount)" }
     if ($TaskOptions.PSObject.Properties.Name -contains 'retryWaitTime') { $RobocopyArgs += "/W:$($TaskOptions.retryWaitTime)" }
     if ($TaskOptions.PSObject.Properties.Name -contains 'logTee' -and $TaskOptions.logTee -eq $true) { $RobocopyArgs += "/TEE" }
+    if ($TaskOptions.listOnly -eq $true) { $RobocopyArgs += "/L" }
 
     # 處理日誌檔案路徑
     if ($TaskOptions.PSObject.Properties.Name -contains 'logPath' -and -not([string]::IsNullOrWhiteSpace($TaskOptions.logPath))) {
@@ -125,7 +134,7 @@ $MenuItems = @($SyncTasks) +
 
 function Show-Menu {
     Clear-Host
-    Write-Host "================ Robocopy 同步選單 (v9.0) ================" -ForegroundColor Yellow
+    Write-Host "================ Robocopy 同步選單 (v9.2) ================" -ForegroundColor Yellow
     Write-Host "任務設定: $ConfigFilePath" -ForegroundColor Gray
     Write-Host "使用 [↑] [↓] 方向鍵選擇，按下 [Enter] 執行，[Q] 退出。`n"
 
