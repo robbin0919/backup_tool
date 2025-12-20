@@ -8,7 +8,7 @@
     Robocopy 的參數現在也由此 JSON 檔案設定。
 
 .NOTES
-    作者: Gemini
+    作者: Robbin Lee
     日期: 2025-12-20
     版本: 5.0
 
@@ -20,27 +20,26 @@
 #----------------------------------------------------------------------
 # 1. 讀取與驗證 JSON 設定檔
 #----------------------------------------------------------------------
+$PSScriptRoot = Get-Location
 $ConfigFilePath = Join-Path $PSScriptRoot "sync_config.json"
 $Config = $null
 
+# 讀取主要任務設定檔
 if (-not (Test-Path $ConfigFilePath)) {
-    Write-Host "[錯誤] 找不到設定檔: $ConfigFilePath" -ForegroundColor Red
+    Write-Host "[錯誤] 找不到任務設定檔: $ConfigFilePath" -ForegroundColor Red
     Read-Host "請按 Enter 鍵結束..."
     exit
 }
-
 try {
     $Config = Get-Content -Path $ConfigFilePath -Raw | ConvertFrom-Json
 }
 catch {
-    Write-Host "[錯誤] 無法解析設定檔 $ConfigFilePath。" -ForegroundColor Red
+    Write-Host "[錯誤] 無法解析任務設定檔 $ConfigFilePath。" -ForegroundColor Red
     Write-Host "請檢查 JSON 格式: $($_.Exception.Message)" -ForegroundColor Yellow
     Read-Host "請按 Enter 鍵結束..."
     exit
 }
 
-# 從設定檔中分別取得全域設定與任務清單
-$GlobalRobocopyOptions = $Config.robocopyOptions
 $SyncTasks = $Config.tasks
 
 if (-not $SyncTasks -or $SyncTasks.Count -eq 0) {
@@ -70,32 +69,25 @@ function Start-RobocopySync {
         Write-Host "[錯誤] 來源目錄不存在: $($Task.Source)`n" -ForegroundColor Red
         return
     }
-
     if (-not (Test-Path -Path $Task.Destination -PathType Container)) {
         Write-Host "[警告] 目標目錄不存在，將自動建立: $($Task.Destination)`n" -ForegroundColor Yellow
         New-Item -Path $Task.Destination -ItemType Directory | Out-Null
     }
 
-    # 合併全域與任務特定的 Robocopy 選項
-    $FinalOptions = $GlobalRobocopyOptions.psobject.Copy()
-    if ($Task.PSObject.Properties.Name -contains 'overrideRobocopyOptions') {
-        foreach ($prop in $Task.overrideRobocopyOptions.PSObject.Properties) {
-            $FinalOptions.PSObject.Properties[$prop.Name].Value = $prop.Value
-        }
-    }
-
-    # 根據選項建構 Robocopy 參數
+    $TaskOptions = $Task.robocopyOptions
     $RobocopyArgs = @( $Task.Source, $Task.Destination )
-    if ($FinalOptions.mirror) { $RobocopyArgs += "/MIR" }
-    if ($FinalOptions.copyDirectoryTimestamps) { $RobocopyArgs += "/DCOPY:T" }
-    $RobocopyArgs += "/R:$($FinalOptions.retryCount)"
-    $RobocopyArgs += "/W:$($FinalOptions.retryWaitTime)"
-    if ($FinalOptions.logTee) { $RobocopyArgs += "/TEE" }
-    
+    $LogFile = $null
+
+    # 根據選項建構 Robocopy 參數 (硬編碼邏輯)
+    if ($TaskOptions.PSObject.Properties.Name -contains 'mirror' -and $TaskOptions.mirror -eq $true) { $RobocopyArgs += "/MIR" }
+    if ($TaskOptions.PSObject.Properties.Name -contains 'copyDirectoryTimestamps' -and $TaskOptions.copyDirectoryTimestamps -eq $true) { $RobocopyArgs += "/DCOPY:T" }
+    if ($TaskOptions.PSObject.Properties.Name -contains 'retryCount') { $RobocopyArgs += "/R:$($TaskOptions.retryCount)" }
+    if ($TaskOptions.PSObject.Properties.Name -contains 'retryWaitTime') { $RobocopyArgs += "/W:$($TaskOptions.retryWaitTime)" }
+    if ($TaskOptions.PSObject.Properties.Name -contains 'logTee' -and $TaskOptions.logTee -eq $true) { $RobocopyArgs += "/TEE" }
+
     # 處理日誌檔案路徑
-    if (-not ([string]::IsNullOrWhiteSpace($FinalOptions.logPath))) {
-        # 確保日誌目錄存在
-        $LogDirectory = Join-Path $PSScriptRoot $FinalOptions.logPath
+    if ($TaskOptions.PSObject.Properties.Name -contains 'logPath' -and -not([string]::IsNullOrWhiteSpace($TaskOptions.logPath))) {
+        $LogDirectory = Join-Path $PSScriptRoot $TaskOptions.logPath
         if (-not (Test-Path $LogDirectory)) {
             New-Item -Path $LogDirectory -ItemType Directory | Out-Null
         }
@@ -104,8 +96,8 @@ function Start-RobocopySync {
     }
     
     # 添加額外參數
-    if ($FinalOptions.extraArgs) {
-        $RobocopyArgs += $FinalOptions.extraArgs
+    if ($TaskOptions.PSObject.Properties.Name -contains 'extraArgs' -and $TaskOptions.extraArgs -and $TaskOptions.extraArgs.Count -gt 0) {
+        $RobocopyArgs += $TaskOptions.extraArgs
     }
 
 
@@ -124,7 +116,7 @@ function Start-RobocopySync {
 }
 
 #----------------------------------------------------------------------
-# 3. 光棒選單核心邏輯 (與前一版類似，但傳遞整個任務物件)
+# 3. 光棒選單核心邏輯
 #----------------------------------------------------------------------
 $CurrentIndex = 0
 $MenuItems = @($SyncTasks) + 
@@ -133,22 +125,15 @@ $MenuItems = @($SyncTasks) +
 
 function Show-Menu {
     Clear-Host
-    Write-Host "================ Robocopy 同步選單 (v5.0) ================" -ForegroundColor Yellow
-    Write-Host "設定檔: $ConfigFilePath" -ForegroundColor Gray
+    Write-Host "================ Robocopy 同步選單 (v9.0) ================" -ForegroundColor Yellow
+    Write-Host "任務設定: $ConfigFilePath" -ForegroundColor Gray
     Write-Host "使用 [↑] [↓] 方向鍵選擇，按下 [Enter] 執行，[Q] 退出。`n"
 
     for ($i = 0; $i -lt $MenuItems.Count; $i++) {
         $item = $MenuItems[$i]
-        
         $bgColor = if ($i -eq $CurrentIndex) { [ConsoleColor]::White } else { $Host.UI.RawUI.BackgroundColor }
         $fgColor = if ($i -eq $CurrentIndex) { [ConsoleColor]::Black } else { $Host.UI.RawUI.ForegroundColor }
-
-        $displayText = if ($item.Source -in @("ALL", "QUIT")) {
-            "  $($item.Name)"
-        } else {
-            "  $($item.Name) `t($($item.Source) -> $($item.Destination))"
-        }
-        
+        $displayText = if ($item.Source -in @("ALL", "QUIT")) { "  $($item.Name)" } else { "  $($item.Name) `t($($item.Source) -> $($item.Destination))" }
         Write-Host $displayText -BackgroundColor $bgColor -ForegroundColor $fgColor
     }
 }
