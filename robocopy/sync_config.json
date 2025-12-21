@@ -1,49 +1,57 @@
 ﻿{
+  "robocopyPresets": {
+    "default": {
+      "description": "預設的同步設定：鏡像同步，包含目錄時間戳，少量重試。",
+      "listOnly": true,
+      "mirror": true,
+      "copyDirectoryTimestamps": true,
+      "retryCount": 3,
+      "retryWaitTime": 5,
+      "logPath": "./robocopy_logs/",
+      "logTee": true,
+      "extraArgs": []
+    },
+    "projects": {
+      "description": "專案目錄同步設定：排除 .log 檔案。",
+      "listOnly": true,
+      "mirror": true,
+      "copyDirectoryTimestamps": true,
+      "retryCount": 3,
+      "retryWaitTime": 5,
+      "logPath": "./robocopy_logs/",
+      "logTee": true,
+      "extraArgs": ["/XF", "*.log"]
+    },
+    "photos": {
+      "description": "照片同步設定：增加重試次數，且不在主控台顯示日誌。",
+      "listOnly": true,
+      "mirror": true,
+      "copyDirectoryTimestamps": true,
+      "retryCount": 10,
+      "retryWaitTime": 5,
+      "logPath": "./robocopy_logs/",
+      "logTee": false,
+      "extraArgs": []
+    }
+  },
   "tasks": [
     {
       "Name": "範例 1: 我的文件 (來自JSON)",
       "Source": "C:\\Users\\YourUser\\Documents",
       "Destination": "D:\\Backup\\Documents",
-      "robocopyOptions": {
-        "listOnly": true,
-        "mirror": true,
-        "copyDirectoryTimestamps": true,
-        "retryCount": 3,
-        "retryWaitTime": 5,
-        "logPath": "./robocopy_logs/",
-        "logTee": true,
-        "extraArgs": []
-      }
+      "robocopyPreset": "default"
     },
     {
       "Name": "範例 2: 專案檔案 (來自JSON)",
       "Source": "C:\\Projects",
       "Destination": "D:\\Backup\\Projects",
-      "robocopyOptions": {
-        "listOnly": true,
-        "mirror": true,
-        "copyDirectoryTimestamps": true,
-        "retryCount": 3,
-        "retryWaitTime": 5,
-        "logPath": "./robocopy_logs/",
-        "logTee": true,
-        "extraArgs": ["/XF", "*.log"]
-      }
+      "robocopyPreset": "projects"
     },
     {
       "Name": "範例 3: 照片 (來自JSON)",
       "Source": "C:\\Users\\YourUser\\Pictures",
       "Destination": "E:\\Backup\\Pictures",
-      "robocopyOptions": {
-        "listOnly": true,
-        "mirror": true,
-        "copyDirectoryTimestamps": true,
-        "retryCount": 10,
-        "retryWaitTime": 5,
-        "logPath": "./robocopy_logs/",
-        "logTee": false,
-        "extraArgs": []
-      }
+      "robocopyPreset": "photos"
     }
   ]
 }

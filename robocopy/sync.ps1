@@ -5,12 +5,12 @@
 .DESCRIPTION
     此腳本會讀取名為 sync_config.json 的外部設定檔來動態建立同步任務清單。
     使用者可以透過光棒選單選擇要執行的任務。
-    Robocopy 的參數現在也由此 JSON 檔案設定。
+    Robocopy 的參數完全由此 JSON 檔案中的 'robocopyPresets' 區塊定義。
 
 .NOTES
     作者: Robbin Lee
     日期: 2025-12-21
-    版本: 9.1
+    版本: 9.4
 
 .WARNING
     腳本中的 /MIR 參數會刪除目標目錄中有，但來源目錄沒有的檔案與資料夾。
@@ -40,7 +40,9 @@ catch {
     exit
 }
 
+# 取得任務清單與預設組
 $SyncTasks = $Config.tasks
+$RobocopyPresets = $Config.robocopyPresets
 
 if (-not $SyncTasks -or $SyncTasks.Count -eq 0) {
     Write-Host "[警告] 設定檔中找不到有效的同步任務 ('tasks' 陣列)。" -ForegroundColor Yellow
@@ -74,29 +76,44 @@ function Start-RobocopySync {
         New-Item -Path $Task.Destination -ItemType Directory | Out-Null
     }
 
-    $TaskOptions = $Task.robocopyOptions
+    # --- 核心邏輯：直接查找並使用 Preset ---
+    $FinalOptions = $null
+    $presetName = $Task.robocopyPreset
+    
+    if ([string]::IsNullOrWhiteSpace($presetName)) {
+        Write-Host "[錯誤] 任務 '$($Task.Name)' 未指定 'robocopyPreset'。" -ForegroundColor Red
+        return
+    }
+    
+    if ($RobocopyPresets -and $RobocopyPresets.PSObject.Properties.Name -contains $presetName) {
+        $FinalOptions = $RobocopyPresets.$presetName
+    } else {
+        Write-Host "[錯誤] 任務 '$($Task.Name)' 指定的預設組 '$presetName' 不存在。" -ForegroundColor Red
+        return
+    }
+
     $RobocopyArgs = @( $Task.Source, $Task.Destination )
     $LogFile = $null
 
     # 安全性檢查：強制要求 listOnly 參數必須存在
-    if (-not ($TaskOptions.PSObject.Properties.Name -contains 'listOnly')) {
-        Write-Host "[錯誤] 任務 '$($Task.Name)' 未設定 'listOnly' 參數。" -ForegroundColor Red
+    if (-not ($FinalOptions.PSObject.Properties.Name -contains 'listOnly')) {
+        Write-Host "[錯誤] 預設組 '$presetName' 未設定 'listOnly' 參數。" -ForegroundColor Red
         Write-Host "       為防止意外操作，此為必填參數。" -ForegroundColor Red
-        Write-Host "       請在 'robocopyOptions' 中加入 '\"listOnly\": true' (測試模式) 或 '\"listOnly\": false' (實際執行)。`n" -ForegroundColor Red
+        Write-Host "       請在 Preset 中加入 '\"listOnly\": true' (測試模式) 或 '\"listOnly\": false' (實際執行)。`n" -ForegroundColor Red
         return
     }
 
-    # 根據選項建構 Robocopy 參數 (硬編碼邏輯)
-    if ($TaskOptions.PSObject.Properties.Name -contains 'mirror' -and $TaskOptions.mirror -eq $true) { $RobocopyArgs += "/MIR" }
-    if ($TaskOptions.PSObject.Properties.Name -contains 'copyDirectoryTimestamps' -and $TaskOptions.copyDirectoryTimestamps -eq $true) { $RobocopyArgs += "/DCOPY:T" }
-    if ($TaskOptions.PSObject.Properties.Name -contains 'retryCount') { $RobocopyArgs += "/R:$($TaskOptions.retryCount)" }
-    if ($TaskOptions.PSObject.Properties.Name -contains 'retryWaitTime') { $RobocopyArgs += "/W:$($TaskOptions.retryWaitTime)" }
-    if ($TaskOptions.PSObject.Properties.Name -contains 'logTee' -and $TaskOptions.logTee -eq $true) { $RobocopyArgs += "/TEE" }
-    if ($TaskOptions.listOnly -eq $true) { $RobocopyArgs += "/L" }
+    # 根據 FinalOptions 建構 Robocopy 參數
+    if ($FinalOptions.PSObject.Properties.Name -contains 'mirror' -and $FinalOptions.mirror -eq $true) { $RobocopyArgs += "/MIR" }
+    if ($FinalOptions.PSObject.Properties.Name -contains 'copyDirectoryTimestamps' -and $FinalOptions.copyDirectoryTimestamps -eq $true) { $RobocopyArgs += "/DCOPY:T" }
+    if ($FinalOptions.PSObject.Properties.Name -contains 'retryCount') { $RobocopyArgs += "/R:$($FinalOptions.retryCount)" }
+    if ($FinalOptions.PSObject.Properties.Name -contains 'retryWaitTime') { $RobocopyArgs += "/W:$($FinalOptions.retryWaitTime)" }
+    if ($FinalOptions.PSObject.Properties.Name -contains 'logTee' -and $FinalOptions.logTee -eq $true) { $RobocopyArgs += "/TEE" }
+    if ($FinalOptions.listOnly -eq $true) { $RobocopyArgs += "/L" }
 
     # 處理日誌檔案路徑
-    if ($TaskOptions.PSObject.Properties.Name -contains 'logPath' -and -not([string]::IsNullOrWhiteSpace($TaskOptions.logPath))) {
-        $LogDirectory = Join-Path $PSScriptRoot $TaskOptions.logPath
+    if ($FinalOptions.PSObject.Properties.Name -contains 'logPath' -and -not([string]::IsNullOrWhiteSpace($FinalOptions.logPath))) {
+        $LogDirectory = Join-Path $PSScriptRoot $FinalOptions.logPath
         if (-not (Test-Path $LogDirectory)) {
             New-Item -Path $LogDirectory -ItemType Directory | Out-Null
         }
@@ -105,8 +122,8 @@ function Start-RobocopySync {
     }
     
     # 添加額外參數
-    if ($TaskOptions.PSObject.Properties.Name -contains 'extraArgs' -and $TaskOptions.extraArgs -and $TaskOptions.extraArgs.Count -gt 0) {
-        $RobocopyArgs += $TaskOptions.extraArgs
+    if ($FinalOptions.PSObject.Properties.Name -contains 'extraArgs' -and $FinalOptions.extraArgs -and $FinalOptions.extraArgs.Count -gt 0) {
+        $RobocopyArgs += $FinalOptions.extraArgs
     }
 
 
@@ -134,7 +151,7 @@ $MenuItems = @($SyncTasks) +
 
 function Show-Menu {
     Clear-Host
-    Write-Host "================ Robocopy 同步選單 (v9.2) ================" -ForegroundColor Yellow
+    Write-Host "================ Robocopy 同步選單 (v9.4) ================" -ForegroundColor Yellow
     Write-Host "任務設定: $ConfigFilePath" -ForegroundColor Gray
     Write-Host "使用 [↑] [↓] 方向鍵選擇，按下 [Enter] 執行，[Q] 退出。`n"
 
@@ -142,7 +159,23 @@ function Show-Menu {
         $item = $MenuItems[$i]
         $bgColor = if ($i -eq $CurrentIndex) { [ConsoleColor]::White } else { $Host.UI.RawUI.BackgroundColor }
         $fgColor = if ($i -eq $CurrentIndex) { [ConsoleColor]::Black } else { $Host.UI.RawUI.ForegroundColor }
-        $displayText = if ($item.Source -in @("ALL", "QUIT")) { "  $($item.Name)" } else { "  $($item.Name) `t($($item.Source) -> $($item.Destination))" }
+        
+        $displayText = if ($item.Source -in @("ALL", "QUIT")) {
+            "  $($item.Name)"
+        } else {
+            $presetName = $item.robocopyPreset
+            $description = ""
+            if (-not [string]::IsNullOrWhiteSpace($presetName) -and $RobocopyPresets.PSObject.Properties.Name -contains $presetName) {
+                $preset = $RobocopyPresets.$presetName
+                if ($preset.PSObject.Properties.Name -contains 'description') {
+                    $description = $preset.description
+                }
+            }
+            # 組成包含描述的顯示文字
+            $taskLine = "  $($item.Name) `t($($item.Source) -> $($item.Destination))"
+            $descriptionLine = "    - 預設組: $presetName`n      ($description)"
+            "$taskLine`n$descriptionLine"
+        }
         Write-Host $displayText -BackgroundColor $bgColor -ForegroundColor $fgColor
     }
 }
